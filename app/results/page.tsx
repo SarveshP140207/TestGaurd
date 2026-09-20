@@ -157,6 +157,16 @@ export default function Results() {
         nodeData = ghNodes.find((n: any) => n.id === id);
       }
       
+      const affectedTest = result.affectedTests.find(t => t.id === id);
+      if (affectedTest && nodeData) {
+        nodeData = {
+          ...nodeData,
+          priorityLevel: affectedTest.priorityLevel,
+          priorityScore: affectedTest.priorityScore,
+          priorityReason: affectedTest.priorityReason
+        } as any;
+      }
+      
       const isChange = changesObj.includes(id);
       const isTest = nodeData?.type === 'test';
       
@@ -167,11 +177,18 @@ export default function Results() {
         bgColor = 'rgba(245, 158, 11, 0.2)';
         borderColor = '#f59e0b';
       } else if (isTest) {
-        bgColor = 'rgba(59, 130, 246, 0.2)';
-        borderColor = '#3b82f6';
         if (nodeData?.priorityLevel === 'HIGH') {
           bgColor = 'rgba(239, 68, 68, 0.2)';
           borderColor = '#ef4444';
+        } else if (nodeData?.priorityLevel === 'MEDIUM') {
+          bgColor = 'rgba(245, 158, 11, 0.2)';
+          borderColor = '#f59e0b';
+        } else if (nodeData?.priorityLevel === 'LOW') {
+          bgColor = 'rgba(59, 130, 246, 0.2)';
+          borderColor = '#3b82f6';
+        } else {
+          bgColor = '#1e293b';
+          borderColor = '#334155';
         }
       }
 
@@ -245,10 +262,11 @@ export default function Results() {
   const highTests = result.affectedTests.filter(t => t.priorityLevel === 'HIGH');
   const medTests = result.affectedTests.filter(t => t.priorityLevel === 'MEDIUM');
   const lowTests = result.affectedTests.filter(t => t.priorityLevel === 'LOW');
+  const noneTests = result.affectedTests.filter(t => t.priorityLevel === 'NONE' || !t.priorityLevel);
   
   const changedFilesCount = JSON.parse(localStorage.getItem('testguard_changes') || '[]').length;
-  const affectedModules = new Set(nodes.filter(n => n.data?.fullData?.type === 'module').map(n => n.id)).size;
-  const affectedFuncs = new Set(nodes.filter(n => n.data?.fullData?.type === 'function').map(n => n.id)).size;
+  const affectedModules = new Set(nodes.filter(n => (n.data as any)?.fullData?.type === 'module').map(n => n.id)).size;
+  const affectedFuncs = new Set(nodes.filter(n => (n.data as any)?.fullData?.type === 'function').map(n => n.id)).size;
 
   return (
     <div className="animate-fade-in">
@@ -276,9 +294,13 @@ export default function Results() {
           <div style={{ fontSize: '0.875rem', color: '#94a3b8' }}>Medium Impact Tests</div>
           <div style={{ fontSize: '1.5rem', fontWeight: 600, color: '#fcd34d' }}>{medTests.length}</div>
         </div>
+        <div className="card" style={{ padding: '1rem', borderTop: '3px solid #3b82f6' }}>
+          <div style={{ fontSize: '0.875rem', color: '#94a3b8' }}>Low Impact Tests</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 600, color: '#93c5fd' }}>{lowTests.length}</div>
+        </div>
         <div className="card" style={{ padding: '1rem', borderTop: '3px solid #10b981' }}>
-          <div style={{ fontSize: '0.875rem', color: '#94a3b8' }}>Low / No Detected Impact</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 600, color: '#6ee7b7' }}>{lowTests.length}</div>
+          <div style={{ fontSize: '0.875rem', color: '#94a3b8' }}>None / No Impact</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 600, color: '#6ee7b7' }}>{noneTests.length}</div>
         </div>
       </div>
 
@@ -341,12 +363,16 @@ export default function Results() {
                 <div style={{ marginTop: '0.5rem' }}>
                   <h5 style={{ fontSize: '0.875rem', color: '#94a3b8', marginBottom: '0.5rem' }}>Impact & Priority</h5>
                   <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <span className={`badge badge-${selectedNodeData.fullData.priorityLevel.toLowerCase()}`}>
-                      {selectedNodeData.fullData.priorityLevel} IMPACT
-                    </span>
+                    {selectedNodeData.fullData.priorityLevel ? (
+                      <span className={`badge badge-${selectedNodeData.fullData.priorityLevel.toLowerCase()}`}>
+                        {selectedNodeData.fullData.priorityLevel} IMPACT
+                      </span>
+                    ) : (
+                      <span className="badge badge-neutral">UNKNOWN IMPACT</span>
+                    )}
                   </div>
                   <p style={{ fontSize: '0.875rem', color: '#cbd5e1' }}>
-                    {selectedNodeData.fullData.priorityReason}
+                    {selectedNodeData.fullData.priorityReason || 'No impact analysis available for this node.'}
                   </p>
                 </div>
               )}

@@ -11,22 +11,22 @@ export function calculateTestPriorities(
     let level: PriorityLevel = 'NONE';
 
     // 1. Dependency Proximity (Honest assessment)
-    if (distance === 1) {
+    if (distance >= 0 && distance <= 3) {
       score = 85;
       level = 'HIGH';
-      reasons.push("Directly depends on changed code (1 hop)");
-    } else if (distance === 2) {
+      reasons.push(`Directly depends on changed code (${distance} hops)`);
+    } else if (distance === 4) {
       score = 65;
       level = 'MEDIUM';
-      reasons.push("Indirectly depends on changed code (2 hops)");
-    } else if (distance > 2) {
+      reasons.push("Indirectly depends on changed code (4 hops)");
+    } else if (distance > 4) {
       score = 30;
       level = 'LOW';
       reasons.push(`Extended dependency chain (${distance} hops)`);
     } else {
       score = 0;
-      level = 'LOW';
-      reasons.push("Low / No Detected Impact path from changes");
+      level = 'NONE';
+      reasons.push("No Detected Impact path from changes");
     }
 
     if (distance !== -1) {
@@ -47,9 +47,11 @@ export function calculateTestPriorities(
     score = Math.min(Math.max(score, 0), 100);
 
     // Upgrade level if score pushes it over the threshold due to other factors (if they exist)
-    if (score >= 80) level = 'HIGH';
-    else if (score >= 50) level = 'MEDIUM';
-    else level = 'LOW';
+    if (level !== 'NONE') {
+      if (score >= 80) level = 'HIGH';
+      else if (score >= 50) level = 'MEDIUM';
+      else level = 'LOW';
+    }
 
     return {
       ...test,

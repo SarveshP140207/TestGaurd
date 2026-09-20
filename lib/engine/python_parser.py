@@ -11,9 +11,10 @@ def get_module_name(file_path, root_dir):
     return module_name
 
 class ASTVisitor(ast.NodeVisitor):
-    def __init__(self, file_path, module_name):
+    def __init__(self, file_path, module_name, file_id):
         self.file_path = file_path
         self.module_name = module_name
+        self.file_id = file_id
         
         self.functions = []
         self.tests = []
@@ -36,9 +37,9 @@ class ASTVisitor(ast.NodeVisitor):
         is_test = func_name.startswith('test_') or (self.current_class and self.current_class.startswith('Test') and func_name.startswith('test_'))
         
         if self.current_class:
-            full_name = f"{self.module_name}.{self.current_class}.{func_name}"
+            full_name = f"{self.file_id}:{self.current_class}.{func_name}"
         else:
-            full_name = f"{self.module_name}.{func_name}"
+            full_name = f"{self.file_id}:{func_name}"
         
         if is_test:
             self.tests.append({
@@ -88,8 +89,13 @@ def analyze_directory(root_dir):
     
     modules = set()
     module_exports = {}
+    file_exports = {}
     
-    for dirpath, _, filenames in os.walk(root_dir):
+    excludes = {'venv', '.venv', 'env', '.env', '__pycache__', 'node_modules', 'build', 'dist'}
+    for dirpath, dirnames, filenames in os.walk(root_dir):
+        # Exclude directories
+        dirnames[:] = [d for d in dirnames if d not in excludes]
+        
         for filename in filenames:
             if not filename.endswith('.py'):
                 continue
@@ -114,24 +120,24 @@ def analyze_directory(root_dir):
                     source = f.read()
                 tree = ast.parse(source, filename=file_path)
                 
-                visitor = ASTVisitor(file_path, module_name)
+                visitor = ASTVisitor(file_path, module_name, file_id)
                 visitor.visit(tree)
                 
                 nodes.extend(visitor.functions)
                 nodes.extend(visitor.tests)
                 
-                module_exports[module_name] = [fn['name'] for fn in visitor.functions] + [t['name'] for t in visitor.tests]
+                file_exports[file_id] = [fn['name'] for fn in visitor.functions] + [t['name'] for t in visitor.tests]
                 
                 for fn in visitor.functions:
                     edges.append({
-                        "source": file_id,
-                        "target": fn["id"],
+                        "source": fn["id"],
+                        "target": file_id,
                         "type": "contains"
                     })
                 for test in visitor.tests:
                     edges.append({
-                        "source": file_id,
-                        "target": test["id"],
+                        "source": test["id"],
+                        "target": file_id,
                         "type": "contains"
                     })
                     
@@ -143,13 +149,14 @@ def analyze_directory(root_dir):
                     })
                     
                 for caller, called in visitor.calls:
-                    local_target = f"{module_name}.{called}"
+                    local_target = f"{file_id}:{called}"
                     edges.append({
                         "source": caller,
                         "target": called,
                         "type": "calls"
                     })
-                    if called in module_exports.get(module_name, []):
+                    # Add edge to local function if it exists in the same file
+                    if called in file_exports.get(file_id, []):
                         edges.append({
                             "source": caller,
                             "target": local_target,
