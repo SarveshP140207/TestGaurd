@@ -31,12 +31,13 @@ export default function AnalyzeChange() {
         const diffFiles = state.diffFiles;
         if (diffFiles) {
           // Map GitHub diff files to CodeNode-like structure
-          const githubNodes: CodeNode[] = diffFiles.map((f: any) => ({
+          const githubNodes: (CodeNode & { patch?: string })[] = diffFiles.map((f: any) => ({
             id: f.filename,
             type: 'file',
             name: f.filename,
             module: f.filename.split('/')[0] || 'root',
-            description: `Status: ${f.status} (+${f.additions} -${f.deletions})`
+            description: `Status: ${f.status} (+${f.additions} -${f.deletions})`,
+            patch: f.patch
           }));
           setNodes(githubNodes);
           setSelectedChanges(githubNodes);
@@ -197,29 +198,55 @@ export default function AnalyzeChange() {
                 <p style={{ fontSize: '0.875rem' }}>Select items from the list to simulate changes.</p>
               </div>
             ) : (
-              selectedChanges.map(node => (
-                <div 
-                  key={`sel-${node.id}`}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '0.75rem',
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                    border: '1px solid rgba(59, 130, 246, 0.3)',
-                    borderRadius: '0.375rem'
-                  }}
-                >
-                  <div style={{ maxWidth: '85%' }}>
-                    <div style={{ fontWeight: 500, color: '#60a5fa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.name}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{node.type} • {node.module}</div>
-                  </div>
-                  <button 
-                    style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}
-                    onClick={() => removeChange(node.id)}
+              selectedChanges.map((node: any) => (
+                <div key={`sel-${node.id}`} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
+                  <div 
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '0.75rem',
+                      backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                      borderRadius: '0.375rem'
+                    }}
                   >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
+                    <div style={{ maxWidth: '85%' }}>
+                      <div style={{ fontWeight: 500, color: '#60a5fa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.name}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{node.description || `${node.type} • ${node.module}`}</div>
+                    </div>
+                    <button 
+                      style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}
+                      onClick={() => removeChange(node.id)}
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </div>
+                  
+                  {isGithub && node.patch && (
+                    <div style={{
+                      backgroundColor: '#0f172a',
+                      border: '1px solid var(--panel-border)',
+                      borderRadius: '0.375rem',
+                      padding: '0.75rem',
+                      maxHeight: '200px',
+                      overflowY: 'auto',
+                      fontSize: '0.75rem',
+                      fontFamily: 'monospace',
+                      whiteSpace: 'pre-wrap',
+                      color: '#cbd5e1'
+                    }}>
+                      {node.patch.split('\n').map((line: string, i: number) => (
+                        <div key={i} style={{ 
+                          color: line.startsWith('+') ? '#4ade80' : line.startsWith('-') ? '#f87171' : 'inherit',
+                          backgroundColor: line.startsWith('+') ? 'rgba(74, 222, 128, 0.1)' : line.startsWith('-') ? 'rgba(248, 113, 113, 0.1)' : 'transparent',
+                          padding: '0 0.25rem'
+                        }}>
+                          {line}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))
             )}

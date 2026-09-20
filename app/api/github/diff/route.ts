@@ -32,7 +32,8 @@ export async function GET(request: Request) {
       status: f.status,
       additions: f.additions,
       deletions: f.deletions,
-      changes: f.changes
+      changes: f.changes,
+      patch: f.patch
     })) || [];
 
     return NextResponse.json({

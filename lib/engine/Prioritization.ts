@@ -8,53 +8,48 @@ export function calculateTestPriorities(
     const distance = impactDistances.has(test.id) ? impactDistances.get(test.id)! : -1;
     let score = 0;
     const reasons: string[] = [];
+    let level: PriorityLevel = 'NONE';
 
-    // 1. Dependency Proximity
+    // 1. Dependency Proximity (Honest assessment)
     if (distance === 1) {
-      score += 75;
-      reasons.push("Directly depends on modified code");
+      score = 85;
+      level = 'HIGH';
+      reasons.push("Directly depends on changed code (1 hop)");
     } else if (distance === 2) {
-      score += 55;
-      reasons.push("1 hop from modified code");
+      score = 65;
+      level = 'MEDIUM';
+      reasons.push("Indirectly depends on changed code (2 hops)");
     } else if (distance > 2) {
-      score += 35;
-      reasons.push(`${distance - 1} hops from modified code`);
+      score = 30;
+      level = 'LOW';
+      reasons.push(`Extended dependency chain (${distance} hops)`);
     } else {
-      score = Math.floor(Math.random() * 10); // Small random baseline for unaffected tests
-      reasons.push("No direct dependency on changes");
+      score = 0;
+      level = 'LOW';
+      reasons.push("Low / No Detected Impact path from changes");
     }
 
     if (distance !== -1) {
-      // 2. Historical Failures
-      const failures = test.historyFailures || 0;
-      if (failures > 0) {
-        const failScore = Math.min(failures * 3, 15);
-        score += failScore;
-        reasons.push(`Historically flaky/failed (${failures} times)`);
+      // 2. Historical Failures (ONLY if explicitly provided)
+      if (test.historyFailures && test.historyFailures > 0) {
+        score += Math.min(test.historyFailures * 3, 15);
+        reasons.push(`Historically flaky/failed (${test.historyFailures} times)`);
       }
 
-      // 3. Module Criticality
-      const criticalModules = ['payment', 'auth', 'orders'];
-      if (test.module && criticalModules.some(m => test.module?.toLowerCase().includes(m))) {
-        score += 10;
-        reasons.push(`High criticality module (${test.module})`);
-      }
-
-      // 4. Execution Time (favor faster tests slightly for fail-fast)
+      // 3. Execution Time
       if (test.executionTimeMs && test.executionTimeMs < 100) {
         score += 5;
-        reasons.push("Fast execution time");
+        reasons.push(`Fast execution (${test.executionTimeMs}ms)`);
       }
     }
 
     // Clamp score 0-100
     score = Math.min(Math.max(score, 0), 100);
 
-    let level: PriorityLevel = 'NONE';
+    // Upgrade level if score pushes it over the threshold due to other factors (if they exist)
     if (score >= 80) level = 'HIGH';
     else if (score >= 50) level = 'MEDIUM';
-    else if (score > 10) level = 'LOW';
-    else level = 'LOW'; // Everything unaffected is low
+    else level = 'LOW';
 
     return {
       ...test,
@@ -62,5 +57,8 @@ export function calculateTestPriorities(
       priorityLevel: level,
       priorityReason: reasons.join(" • ")
     };
-  }).sort((a, b) => (b.priorityScore || 0) - (a.priorityScore || 0));
+  }).sort((a, b) => {
+    // Sort HIGH > MEDIUM > LOW > NO IMPACT
+    return (b.priorityScore || 0) - (a.priorityScore || 0);
+  });
 }

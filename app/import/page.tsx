@@ -150,6 +150,31 @@ export default function ImportProject() {
       };
       localStorage.setItem('testguard_github_state', JSON.stringify(stateObj));
       
+      // Save project to Dashboard
+      const savedStr = localStorage.getItem('testguard_saved_projects');
+      let savedProjects = [];
+      if (savedStr) {
+        try { savedProjects = JSON.parse(savedStr); } catch (e) {}
+      }
+      
+      const projectId = `${githubRepo.owner}/${githubRepo.repo}`;
+      const existingIdx = savedProjects.findIndex((p: any) => p.id === projectId);
+      const newSavedProject = {
+        id: projectId,
+        url: githubUrl,
+        repo: githubRepo,
+        branches,
+        selectedBranch,
+        selectedCommit: sha
+      };
+      
+      if (existingIdx >= 0) {
+        savedProjects[existingIdx] = { ...savedProjects[existingIdx], ...newSavedProject };
+      } else {
+        savedProjects.push(newSavedProject);
+      }
+      localStorage.setItem('testguard_saved_projects', JSON.stringify(savedProjects));
+      
       router.push('/analyze');
     } catch (err: any) {
       setGithubError(err.message);
