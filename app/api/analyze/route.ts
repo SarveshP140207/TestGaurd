@@ -14,6 +14,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
     }
 
+    if (projectId === 'github') {
+      return NextResponse.json({
+        modifiedNodeId: modifiedNodeIds[0] || 'github_commit',
+        affectedTests: [],
+        allNodes: [],
+        relevantEdges: []
+      });
+    }
+
     const filePath = path.join(process.cwd(), 'data', `${projectId}.json`);
     if (!fs.existsSync(filePath)) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });

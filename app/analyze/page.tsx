@@ -11,6 +11,8 @@ export default function AnalyzeChange() {
   const [nodes, setNodes] = useState<CodeNode[]>([]);
   const [selectedChanges, setSelectedChanges] = useState<CodeNode[]>([]);
   const [search, setSearch] = useState("");
+  const [isGithub, setIsGithub] = useState(false);
+  const [githubState, setGithubState] = useState<any>(null);
 
   useEffect(() => {
     const pid = localStorage.getItem('testguard_project');
@@ -20,6 +22,29 @@ export default function AnalyzeChange() {
     }
     setProjectId(pid);
     
+    if (pid === 'github') {
+      setIsGithub(true);
+      const stateStr = localStorage.getItem('testguard_github_state');
+      if (stateStr) {
+        const state = JSON.parse(stateStr);
+        setGithubState(state);
+        const diffFiles = state.diffFiles;
+        if (diffFiles) {
+          // Map GitHub diff files to CodeNode-like structure
+          const githubNodes: CodeNode[] = diffFiles.map((f: any) => ({
+            id: f.filename,
+            type: 'file',
+            name: f.filename,
+            module: f.filename.split('/')[0] || 'root',
+            description: `Status: ${f.status} (+${f.additions} -${f.deletions})`
+          }));
+          setNodes(githubNodes);
+          setSelectedChanges(githubNodes);
+        }
+      }
+      return;
+    }
+
     fetch(`/api/projects/${pid}`)
       .then(res => res.json())
       .then(data => {
@@ -55,6 +80,12 @@ export default function AnalyzeChange() {
   const handleAnalyze = () => {
     if (selectedChanges.length === 0) return;
     localStorage.setItem('testguard_changes', JSON.stringify(selectedChanges.map(c => c.id)));
+    
+    // For GitHub projects, store the full node structures so the results page can display them
+    if (isGithub) {
+       localStorage.setItem('testguard_github_nodes', JSON.stringify(selectedChanges));
+    }
+    
     router.push('/results');
   };
 
@@ -62,18 +93,47 @@ export default function AnalyzeChange() {
 
   return (
     <div className="animate-fade-in">
-      <h1 className="page-title">Analyze Change</h1>
-      <p className="page-subtitle">Select the files or functions you have modified to see impact.</p>
+      <h1 className="page-title">{isGithub ? "Review GitHub Changes" : "Analyze Change"}</h1>
+      <p className="page-subtitle">
+        {isGithub 
+          ? "These files were modified in the selected GitHub commit. Review before analysis." 
+          : "Select the files or functions you have modified to see impact."}
+      </p>
+
+      {isGithub && githubState && (
+        <div style={{
+          marginBottom: '2rem',
+          padding: '1rem',
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          border: '1px solid rgba(59, 130, 246, 0.3)',
+          borderRadius: '0.5rem'
+        }}>
+          <h3 style={{ fontSize: '1.125rem', fontWeight: 600, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <GitCommit className="w-5 h-5 text-blue-400" />
+            GitHub Commit Context
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.5rem 1rem', fontSize: '0.875rem' }}>
+            <div style={{ color: '#94a3b8' }}>Repository:</div>
+            <div style={{ fontWeight: 500 }}>{githubState.repo?.owner}/{githubState.repo?.repo}</div>
+            <div style={{ color: '#94a3b8' }}>Branch:</div>
+            <div style={{ fontWeight: 500 }}>{githubState.selectedBranch}</div>
+            <div style={{ color: '#94a3b8' }}>Commit:</div>
+            <div style={{ fontWeight: 500, fontFamily: 'monospace' }}>{githubState.selectedCommit}</div>
+            <div style={{ color: '#94a3b8' }}>Message:</div>
+            <div>{githubState.commitData?.message}</div>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
         <div className="card">
-          <h3 style={{ fontSize: '1.25rem', marginBottom: '1rem' }}>Codebase Explorer</h3>
+          <h3 style={{ fontSize: '1.25rem', marginBottom: '1rem' }}>{isGithub ? "Changed Files in Commit" : "Codebase Explorer"}</h3>
           
           <div style={{ position: 'relative', marginBottom: '1rem' }}>
             <Search className="w-5 h-5 absolute left-3 top-2.5 text-slate-400" />
             <input 
               type="text" 
-              placeholder="Search files, functions, or modules..." 
+              placeholder="Search files..." 
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               style={{ 
@@ -102,13 +162,13 @@ export default function AnalyzeChange() {
                   border: '1px solid var(--panel-border)'
                 }}
               >
-                <div>
-                  <div style={{ fontWeight: 500 }}>{node.name}</div>
+                <div style={{ maxWidth: '85%' }}>
+                  <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.name}</div>
                   <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
                     <span className="badge badge-neutral" style={{ padding: '0.1rem 0.4rem', marginRight: '0.5rem' }}>
                       {node.type}
                     </span>
-                    Module: {node.module}
+                    {node.description || `Module: ${node.module}`}
                   </div>
                 </div>
                 <button 
@@ -125,7 +185,7 @@ export default function AnalyzeChange() {
 
         <div className="card" style={{ display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h3 style={{ fontSize: '1.25rem' }}>Selected Changes (What-If)</h3>
+            <h3 style={{ fontSize: '1.25rem' }}>Selected Changes</h3>
             <span className="badge badge-neutral">{selectedChanges.length} items</span>
           </div>
 
@@ -134,7 +194,7 @@ export default function AnalyzeChange() {
               <div style={{ textAlign: 'center', color: '#94a3b8', padding: '2rem 0' }}>
                 <GitCommit className="w-8 h-8 mx-auto mb-2 opacity-50" />
                 <p>No changes selected.</p>
-                <p style={{ fontSize: '0.875rem' }}>Select items from the codebase explorer to simulate changes.</p>
+                <p style={{ fontSize: '0.875rem' }}>Select items from the list to simulate changes.</p>
               </div>
             ) : (
               selectedChanges.map(node => (
@@ -150,8 +210,8 @@ export default function AnalyzeChange() {
                     borderRadius: '0.375rem'
                   }}
                 >
-                  <div>
-                    <div style={{ fontWeight: 500, color: '#60a5fa' }}>{node.name}</div>
+                  <div style={{ maxWidth: '85%' }}>
+                    <div style={{ fontWeight: 500, color: '#60a5fa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.name}</div>
                     <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{node.type} • {node.module}</div>
                   </div>
                   <button 

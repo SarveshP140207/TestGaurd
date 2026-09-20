@@ -12,6 +12,7 @@ export default function Results() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [simulation, setSimulation] = useState<{ running: boolean; results: Record<string, 'passed'|'failed'> | null }>({ running: false, results: null });
+  const [projectId, setProjectId] = useState<string | null>(null);
 
   useEffect(() => {
     const pid = localStorage.getItem('testguard_project');
@@ -21,6 +22,7 @@ export default function Results() {
       router.push('/analyze');
       return;
     }
+    setProjectId(pid);
 
     const modifiedNodeIds = JSON.parse(changesJson);
 
@@ -82,7 +84,13 @@ export default function Results() {
   });
 
   const graphNodes: Node[] = Array.from(affectedIds).map((id, index) => {
-    const nodeData = result.allNodes.find(n => n.id === id);
+    let nodeData = result.allNodes.find(n => n.id === id);
+    
+    if (!nodeData && projectId === 'github') {
+      const ghNodes = JSON.parse(localStorage.getItem('testguard_github_nodes') || '[]');
+      nodeData = ghNodes.find((n: any) => n.id === id);
+    }
+    
     const isChange = changesObj.includes(id);
     const isTest = nodeData?.type === 'test';
     
@@ -123,8 +131,12 @@ export default function Results() {
     <div className="animate-fade-in">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <div>
-          <h1 className="page-title">Prioritization Results</h1>
-          <p className="page-subtitle">Affected tests ranked by risk and dependency proximity.</p>
+          <h1 className="page-title">{projectId === 'github' ? "GitHub Changes (Analysis Pending)" : "Prioritization Results"}</h1>
+          <p className="page-subtitle">
+            {projectId === 'github' 
+              ? "Graph mapping and test prioritization for this repository is not yet generated. Coming in Phase 3." 
+              : "Affected tests ranked by risk and dependency proximity."}
+          </p>
         </div>
         <button className="btn btn-primary" onClick={handleRunSimulation} disabled={simulation.running}>
           <PlayCircle className="w-5 h-5" /> 
