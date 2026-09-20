@@ -1,0 +1,34 @@
+{
+  "projectName": "E-Commerce Demo",
+  "languages": ["Python"],
+  "nodes": [
+    { "id": "f_payment", "type": "file", "name": "payment_service.py", "module": "payment" },
+    { "id": "fn_calc_payment", "type": "function", "name": "calculate_payment()", "module": "payment" },
+    { "id": "fn_proc_payment", "type": "function", "name": "process_payment()", "module": "payment" },
+    { "id": "f_auth", "type": "file", "name": "auth_service.py", "module": "auth" },
+    { "id": "fn_login", "type": "function", "name": "login()", "module": "auth" },
+    { "id": "f_orders", "type": "file", "name": "order_service.py", "module": "orders" },
+    { "id": "fn_create_order", "type": "function", "name": "create_order()", "module": "orders" },
+    { "id": "f_invoice", "type": "file", "name": "invoice_service.py", "module": "invoice" },
+    { "id": "fn_gen_invoice", "type": "function", "name": "generate_invoice()", "module": "invoice" },
+    { "id": "T12", "type": "test", "name": "test_payment_validation", "module": "payment", "description": "Validates payment inputs", "historyFailures": 4, "executionTimeMs": 45 },
+    { "id": "T18", "type": "test", "name": "test_payment_failure", "module": "payment", "description": "Tests payment gateway failure handling", "historyFailures": 2, "executionTimeMs": 120 },
+    { "id": "T21", "type": "test", "name": "test_order_confirmation", "module": "orders", "description": "Creates an order and confirms it", "historyFailures": 1, "executionTimeMs": 250 },
+    { "id": "T25", "type": "test", "name": "test_invoice_generation", "module": "invoice", "description": "Generates invoice PDF", "historyFailures": 0, "executionTimeMs": 400 },
+    { "id": "T27", "type": "test", "name": "test_order_history", "module": "orders", "description": "Fetches past orders", "historyFailures": 0, "executionTimeMs": 80 },
+    { "id": "T03", "type": "test", "name": "test_product_search", "module": "products", "description": "Search for products by keyword", "historyFailures": 1, "executionTimeMs": 60 }
+  ],
+  "edges": [
+    { "source": "f_payment", "target": "fn_calc_payment", "type": "contains" },
+    { "source": "f_payment", "target": "fn_proc_payment", "type": "contains" },
+    { "source": "fn_proc_payment", "target": "fn_calc_payment", "type": "calls" },
+    { "source": "fn_create_order", "target": "fn_proc_payment", "type": "calls" },
+    { "source": "fn_gen_invoice", "target": "fn_create_order", "type": "calls" },
+    { "source": "T12", "target": "fn_calc_payment", "type": "covers" },
+    { "source": "T18", "target": "fn_proc_payment", "type": "covers" },
+    { "source": "T21", "target": "fn_create_order", "type": "covers" },
+    { "source": "T25", "target": "fn_gen_invoice", "type": "covers" },
+    { "source": "T27", "target": "fn_create_order", "type": "covers" },
+    { "source": "T03", "target": "fn_login", "type": "covers" }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "projectName": "Banking Demo",
+  "languages": ["Java"],
+  "nodes": [
+    { "id": "f_transaction", "type": "file", "name": "TransactionService.java", "module": "transactions" },
+    { "id": "fn_transfer", "type": "function", "name": "transferFunds()", "module": "transactions" },
+    { "id": "f_account", "type": "file", "name": "AccountService.java", "module": "accounts" },
+    { "id": "fn_balance", "type": "function", "name": "checkBalance()", "module": "accounts" },
+    { "id": "fn_update", "type": "function", "name": "updateBalance()", "module": "accounts" },
+    { "id": "f_loan", "type": "file", "name": "LoanService.java", "module": "loans" },
+    { "id": "fn_approve", "type": "function", "name": "approveLoan()", "module": "loans" },
+    { "id": "T01", "type": "test", "name": "testTransferSuccess", "module": "transactions", "description": "Tests successful fund transfer", "historyFailures": 5, "executionTimeMs": 200 },
+    { "id": "T02", "type": "test", "name": "testTransferInsufficientFunds", "module": "transactions", "description": "Tests transfer with insufficient funds", "historyFailures": 2, "executionTimeMs": 150 },
+    { "id": "T03", "type": "test", "name": "testBalanceUpdate", "module": "accounts", "description": "Tests balance update logic", "historyFailures": 0, "executionTimeMs": 50 },
+    { "id": "T04", "type": "test", "name": "testLoanApproval", "module": "loans", "description": "Tests loan approval criteria", "historyFailures": 1, "executionTimeMs": 300 }
+  ],
+  "edges": [
+    { "source": "f_transaction", "target": "fn_transfer", "type": "contains" },
+    { "source": "f_account", "target": "fn_update", "type": "contains" },
+    { "source": "fn_transfer", "target": "fn_update", "type": "calls" },
+    { "source": "fn_transfer", "target": "fn_balance", "type": "calls" },
+    { "source": "fn_approve", "target": "fn_balance", "type": "calls" },
+    { "source": "T01", "target": "fn_transfer", "type": "covers" },
+    { "source": "T02", "target": "fn_transfer", "type": "covers" },
+    { "source": "T03", "target": "fn_update", "type": "covers" },
+    { "source": "T04", "target": "fn_approve", "type": "covers" }
+  ]
+}
