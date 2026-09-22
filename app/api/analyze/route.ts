@@ -16,6 +16,9 @@ async function downloadAndExtract(owner: string, repo: string, commit: string, d
     'Accept': 'application/vnd.github.v3+json',
     'User-Agent': 'TestGuard-App'
   };
+  if (process.env.GITHUB_TOKEN) {
+    headers['Authorization'] = `token ${process.env.GITHUB_TOKEN}`;
+  }
 
   const res = await fetch(url, { headers });
   if (!res.ok) {
@@ -60,7 +63,7 @@ export async function POST(request: Request) {
 
     let projectData: ProjectData;
 
-    if (projectId === 'github') {
+    if (projectId === 'github' || projectId.includes('/')) {
       if (!githubState || !githubState.repo || !githubState.selectedCommit) {
         return NextResponse.json({ error: 'Missing github state information' }, { status: 400 });
       }

@@ -80,11 +80,16 @@ export default function Results() {
   const [executionError, setExecutionError] = useState<string | null>(null);
 
   useEffect(() => {
-    const pid = localStorage.getItem('testguard_project');
-    const changesJson = localStorage.getItem('testguard_changes');
-    const githubStateStr = localStorage.getItem('testguard_github_state');
+    const pid = localStorage.getItem('testguard_active_project_id');
+    if (!pid) {
+      router.push('/');
+      return;
+    }
     
-    if (!pid || !changesJson) {
+    const changesJson = localStorage.getItem(`testguard_changes_${pid}`);
+    const githubStateStr = localStorage.getItem(`testguard_github_state_${pid}`);
+    
+    if (!changesJson) {
       router.push('/analyze');
       return;
     }
@@ -142,7 +147,7 @@ export default function Results() {
     
     const affectedIds = new Set<string>();
     result.affectedTests.forEach(t => affectedIds.add(t.id));
-    const changesObj = JSON.parse(localStorage.getItem('testguard_changes') || '[]');
+    const changesObj = JSON.parse(localStorage.getItem(`testguard_changes_${projectId}`) || '[]');
     changesObj.forEach((id: string) => affectedIds.add(id));
 
     result.relevantEdges.forEach(e => {
@@ -155,7 +160,7 @@ export default function Results() {
     const rawNodes: Node[] = Array.from(affectedIds).map((id) => {
       let nodeData = result.allNodes.find(n => n.id === id);
       if (!nodeData && projectId === 'github') {
-        const ghNodes = JSON.parse(localStorage.getItem('testguard_github_nodes') || '[]');
+        const ghNodes = JSON.parse(localStorage.getItem(`testguard_github_nodes_${projectId}`) || '[]');
         nodeData = ghNodes.find((n: any) => n.id === id);
       }
       
@@ -249,7 +254,7 @@ export default function Results() {
     setExecutionDone(false);
     
     try {
-      const githubStateStr = localStorage.getItem('testguard_github_state');
+      const githubStateStr = localStorage.getItem(`testguard_github_state_${projectId}`);
       const githubState = githubStateStr ? JSON.parse(githubStateStr) : undefined;
       
       const res = await fetch('/api/execute', {
@@ -268,6 +273,9 @@ export default function Results() {
       
       setExecutionResult(data);
       setExecutionDone(true);
+      if (projectId) {
+        localStorage.setItem(`testguard_execution_${projectId}`, JSON.stringify(data));
+      }
     } catch (err: any) {
       setExecutionError(err.message);
       setExecutionDone(true);
@@ -280,7 +288,7 @@ export default function Results() {
     return (
       <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
         <div style={{ width: '40px', height: '40px', borderRadius: '50%', border: '4px solid rgba(59,130,246,0.3)', borderTopColor: '#3b82f6', animation: 'spin 1s linear infinite' }} />
-        <p style={{ marginTop: '1rem', color: '#94a3b8' }}>{projectId === 'github' ? "Downloading repository and running static impact analysis..." : "Analyzing dependency graph and test impact..."}</p>
+        <p style={{ marginTop: '1rem', color: '#94a3b8' }}>{projectId?.includes('/') ? "Downloading repository and running static impact analysis..." : "Analyzing dependency graph and test impact..."}</p>
         <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
       </div>
     );
@@ -291,7 +299,7 @@ export default function Results() {
   const lowTests = result.affectedTests.filter(t => t.priorityLevel === 'LOW');
   const noneTests = result.affectedTests.filter(t => t.priorityLevel === 'NONE' || !t.priorityLevel);
   
-  const changedFilesCount = JSON.parse(localStorage.getItem('testguard_changes') || '[]').length;
+  const changedFilesCount = JSON.parse(localStorage.getItem(`testguard_changes_${projectId}`) || '[]').length;
   const affectedModules = new Set(nodes.filter(n => (n.data as any)?.fullData?.type === 'module').map(n => n.id)).size;
   const affectedFuncs = new Set(nodes.filter(n => (n.data as any)?.fullData?.type === 'function').map(n => n.id)).size;
 

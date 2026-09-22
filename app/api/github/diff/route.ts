@@ -14,6 +14,9 @@ export async function GET(request: Request) {
     'Accept': 'application/vnd.github.v3+json',
     'User-Agent': 'TestGuard-App'
   };
+  if (process.env.GITHUB_TOKEN) {
+    headers['Authorization'] = `token ${process.env.GITHUB_TOKEN}`;
+  }
 
   try {
     const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits/${ref}`, { headers });

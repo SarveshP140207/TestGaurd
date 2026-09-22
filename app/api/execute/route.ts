@@ -40,6 +40,9 @@ async function downloadAndExtract(owner: string, repo: string, commit: string, d
     'Accept': 'application/vnd.github.v3+json',
     'User-Agent': 'TestGuard-App'
   };
+  if (process.env.GITHUB_TOKEN) {
+    headers['Authorization'] = `token ${process.env.GITHUB_TOKEN}`;
+  }
 
   const res = await fetch(url, { headers });
   if (!res.ok) {

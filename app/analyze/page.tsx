@@ -15,16 +15,17 @@ export default function AnalyzeChange() {
   const [githubState, setGithubState] = useState<any>(null);
 
   useEffect(() => {
-    const pid = localStorage.getItem('testguard_project');
+    const pid = localStorage.getItem('testguard_active_project_id');
     if (!pid) {
-      router.push('/import');
+      router.push('/');
       return;
     }
     setProjectId(pid);
     
-    if (pid === 'github') {
+    // Check if it's a github project (has a / in ID)
+    if (pid.includes('/')) {
       setIsGithub(true);
-      const stateStr = localStorage.getItem('testguard_github_state');
+      const stateStr = localStorage.getItem(`testguard_github_state_${pid}`);
       if (stateStr) {
         const state = JSON.parse(stateStr);
         setGithubState(state);
@@ -79,12 +80,12 @@ export default function AnalyzeChange() {
   };
 
   const handleAnalyze = () => {
-    if (selectedChanges.length === 0) return;
-    localStorage.setItem('testguard_changes', JSON.stringify(selectedChanges.map(c => c.id)));
+    if (selectedChanges.length === 0 || !projectId) return;
+    localStorage.setItem(`testguard_changes_${projectId}`, JSON.stringify(selectedChanges.map(c => c.id)));
     
     // For GitHub projects, store the full node structures so the results page can display them
     if (isGithub) {
-       localStorage.setItem('testguard_github_nodes', JSON.stringify(selectedChanges));
+       localStorage.setItem(`testguard_github_nodes_${projectId}`, JSON.stringify(selectedChanges));
     }
     
     router.push('/results');
