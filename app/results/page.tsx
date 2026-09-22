@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { PlayCircle, AlertTriangle, CheckSquare, Square, Info } from "lucide-react";
+import { PlayCircle, AlertTriangle, CheckSquare, Square, Info, CheckCircle2, XCircle } from "lucide-react";
 import { ReactFlow, Background, Controls, Node, Edge, useNodesState, useEdgesState } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { AnalysisResult, CodeNode } from "@/lib/engine/types";
@@ -76,6 +76,8 @@ export default function Results() {
   
   const [executionRunning, setExecutionRunning] = useState(false);
   const [executionDone, setExecutionDone] = useState(false);
+  const [executionResult, setExecutionResult] = useState<any>(null);
+  const [executionError, setExecutionError] = useState<string | null>(null);
 
   useEffect(() => {
     const pid = localStorage.getItem('testguard_project');
@@ -109,7 +111,7 @@ export default function Results() {
       
       const impacted = new Set<string>();
       data.affectedTests.forEach((t: CodeNode) => {
-        if (t.priorityLevel !== 'LOW') impacted.add(t.id);
+        if (t.priorityLevel !== 'LOW' && t.priorityLevel !== 'NONE') impacted.add(t.id);
       });
       setSelectedTests(impacted);
       
@@ -234,19 +236,44 @@ export default function Results() {
       result.affectedTests.forEach(t => newSelected.add(t.id));
     } else if (mode === 'impacted') {
       result.affectedTests.forEach(t => {
-        if (t.priorityLevel !== 'LOW') newSelected.add(t.id);
+        if (t.priorityLevel !== 'LOW' && t.priorityLevel !== 'NONE') newSelected.add(t.id);
       });
     }
     // Critical mode not fully supported yet in this phase
     setSelectedTests(newSelected);
   };
 
-  const handleRunExecution = () => {
+  const handleRunExecution = async () => {
     setExecutionRunning(true);
-    setTimeout(() => {
-      setExecutionRunning(false);
+    setExecutionError(null);
+    setExecutionDone(false);
+    
+    try {
+      const githubStateStr = localStorage.getItem('testguard_github_state');
+      const githubState = githubStateStr ? JSON.parse(githubStateStr) : undefined;
+      
+      const res = await fetch('/api/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          githubState,
+          selectedTests: Array.from(selectedTests) 
+        })
+      });
+      
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Execution failed');
+      }
+      
+      setExecutionResult(data);
       setExecutionDone(true);
-    }, 1000);
+    } catch (err: any) {
+      setExecutionError(err.message);
+      setExecutionDone(true);
+    } finally {
+      setExecutionRunning(false);
+    }
   };
 
   if (loading || !result) {
@@ -385,9 +412,10 @@ export default function Results() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
           <div>
             <h3 style={{ fontSize: '1.25rem', marginBottom: '0.25rem' }}>Test Selection</h3>
-            <p style={{ fontSize: '0.875rem', color: '#94a3b8' }}>
-              Selected: {selectedTests.size} / {result.affectedTests.length} tests
-              ({result.affectedTests.length - selectedTests.size} deferred for this change)
+            <p style={{ fontSize: '0.875rem', color: '#94a3b8', display: 'flex', gap: '1rem' }}>
+              <span>Total tests: {result.affectedTests.length}</span>
+              <span>Selected: {selectedTests.size}</span>
+              <span>Deferred: {result.affectedTests.length - selectedTests.size}</span>
             </p>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -442,8 +470,65 @@ export default function Results() {
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', borderTop: '1px solid var(--panel-border)', paddingTop: '1.5rem' }}>
           {executionDone ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#ef4444', fontWeight: 500 }}>
-              <AlertTriangle className="w-5 h-5" /> Phase 4 Actual Pytest Execution Not Yet Implemented
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ fontSize: '1.25rem' }}>Execution Results</h3>
+                <button className="btn btn-secondary" onClick={() => setExecutionDone(false)}>Close Results</button>
+              </div>
+              
+              {executionError ? (
+                <div style={{ padding: '1rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', borderRadius: '0.375rem', color: '#fca5a5' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', fontWeight: 600 }}>
+                    <AlertTriangle className="w-5 h-5" /> Execution Error
+                  </div>
+                  <p>{executionError}</p>
+                </div>
+              ) : executionResult && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div style={{ display: 'flex', gap: '2rem', padding: '1rem', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '0.5rem' }}>
+                    <div>
+                      <span style={{ color: '#94a3b8', fontSize: '0.875rem' }}>Selected</span>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 600 }}>{selectedTests.size}</div>
+                    </div>
+                    <div>
+                      <span style={{ color: '#94a3b8', fontSize: '0.875rem' }}>Passed</span>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 600, color: '#22c55e' }}>
+                        {executionResult.results.filter((t: any) => t.outcome === 'passed').length}
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ color: '#94a3b8', fontSize: '0.875rem' }}>Failed</span>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 600, color: '#ef4444' }}>
+                        {executionResult.results.filter((t: any) => t.outcome === 'failed').length}
+                      </div>
+                    </div>
+                    <div>
+                      <span style={{ color: '#94a3b8', fontSize: '0.875rem' }}>Duration</span>
+                      <div style={{ fontSize: '1.5rem', fontWeight: 600 }}>{executionResult.duration}s</div>
+                    </div>
+                  </div>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {executionResult.results.map((testResult: any, idx: number) => {
+                      const isPassed = testResult.outcome === 'passed';
+                      return (
+                        <div key={idx} style={{ padding: '0.75rem', backgroundColor: 'rgba(255,255,255,0.02)', border: `1px solid ${isPassed ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`, borderRadius: '0.375rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            {isPassed ? <CheckCircle2 className="w-5 h-5 text-green-500" /> : <XCircle className="w-5 h-5 text-red-500" />}
+                            <span style={{ fontFamily: 'monospace', fontSize: '0.875rem', wordBreak: 'break-all' }}>{testResult.nodeid}</span>
+                            <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: '0.75rem' }}>{testResult.duration.toFixed(2)}s</span>
+                          </div>
+                          {!isPassed && testResult.longrepr && (
+                            <pre style={{ marginTop: '0.75rem', padding: '0.75rem', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '0.25rem', overflowX: 'auto', fontSize: '0.75rem', color: '#fca5a5' }}>
+                              {testResult.longrepr}
+                            </pre>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <button className="btn btn-primary" onClick={handleRunExecution} disabled={executionRunning || selectedTests.size === 0}>

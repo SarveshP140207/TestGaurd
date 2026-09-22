@@ -44,8 +44,24 @@ export default function ImportProject() {
         if (parsed.repo) setGithubRepo(parsed.repo);
         if (parsed.branches) setBranches(parsed.branches);
         if (parsed.selectedBranch) setSelectedBranch(parsed.selectedBranch);
-        if (parsed.commits) setCommits(parsed.commits);
         if (parsed.selectedCommit) setSelectedCommit(parsed.selectedCommit);
+        
+        // Fetch fresh commits if we have a repo and branch but no commits
+        if (parsed.repo && parsed.selectedBranch && (!parsed.commits || parsed.commits.length === 0)) {
+          setGithubLoading(true);
+          fetch(`/api/github/commits?owner=${parsed.repo.owner}&repo=${parsed.repo.repo}&branch=${parsed.selectedBranch}`)
+            .then(res => res.json())
+            .then(data => {
+              if (!data.error) setCommits(data);
+              setGithubLoading(false);
+            })
+            .catch(err => {
+              console.error(err);
+              setGithubLoading(false);
+            });
+        } else if (parsed.commits) {
+          setCommits(parsed.commits);
+        }
       } catch (e) {
         console.error("Failed to parse saved github state", e);
       }
