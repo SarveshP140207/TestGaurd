@@ -15,53 +15,60 @@ export default function AnalyzeChange() {
   const [githubState, setGithubState] = useState<any>(null);
 
   useEffect(() => {
-    const pid = localStorage.getItem('testguard_active_project_id');
-    if (!pid) {
-      router.push('/');
-      return;
-    }
-    setProjectId(pid);
-    
-    // Check if it's a github project (has a / in ID)
-    if (pid.includes('/')) {
-      setIsGithub(true);
-      const stateStr = localStorage.getItem(`testguard_github_state_${pid}`);
-      if (stateStr) {
-        const state = JSON.parse(stateStr);
-        setGithubState(state);
-        const diffFiles = state.diffFiles;
-        if (diffFiles) {
-          // Map GitHub diff files to CodeNode-like structure
-          const githubNodes: (CodeNode & { patch?: string })[] = diffFiles.map((f: any) => ({
-            id: f.filename,
-            type: 'file',
-            name: f.filename,
-            module: f.filename.split('/')[0] || 'root',
-            description: `Status: ${f.status} (+${f.additions} -${f.deletions})`,
-            patch: f.patch
-          }));
-          setNodes(githubNodes);
-          setSelectedChanges(githubNodes);
-        }
+    const loadState = () => {
+      const pid = localStorage.getItem('testguard_active_project_id');
+      if (!pid) {
+        router.push('/');
+        return;
       }
-      return;
-    }
-
-    fetch(`/api/projects/${pid}`)
-      .then(res => res.json())
-      .then(data => {
-        // Only allow selecting source files/functions, not tests
-        setNodes(data.nodes.filter((n: CodeNode) => n.type !== 'test'));
-        
-        // Auto-select the first function for the demo scenario
-        if (pid === 'ecommerce-demo') {
-          const fn = data.nodes.find((n: CodeNode) => n.id === 'fn_calc_payment');
-          if (fn) setSelectedChanges([fn]);
-        } else {
-          const firstFn = data.nodes.find((n: CodeNode) => n.type === 'function');
-          if (firstFn) setSelectedChanges([firstFn]);
+      setProjectId(pid);
+      
+      // Check if it's a github project (has a / in ID)
+      if (pid.includes('/')) {
+        setIsGithub(true);
+        const stateStr = localStorage.getItem(`testguard_github_state_${pid}`);
+        if (stateStr) {
+          const state = JSON.parse(stateStr);
+          setGithubState(state);
+          const diffFiles = state.diffFiles;
+          if (diffFiles) {
+            // Map GitHub diff files to CodeNode-like structure
+            const githubNodes: (CodeNode & { patch?: string })[] = diffFiles.map((f: any) => ({
+              id: f.filename,
+              type: 'file',
+              name: f.filename,
+              module: f.filename.split('/')[0] || 'root',
+              description: `Status: ${f.status} (+${f.additions} -${f.deletions})`,
+              patch: f.patch
+            }));
+            setNodes(githubNodes);
+            setSelectedChanges(githubNodes);
+          }
         }
-      });
+        return;
+      }
+
+      setIsGithub(false);
+      fetch(`/api/projects/${pid}`)
+        .then(res => res.json())
+        .then(data => {
+          // Only allow selecting source files/functions, not tests
+          setNodes(data.nodes.filter((n: CodeNode) => n.type !== 'test'));
+          
+          // Auto-select the first function for the demo scenario
+          if (pid === 'ecommerce-demo') {
+            const fn = data.nodes.find((n: CodeNode) => n.id === 'fn_calc_payment');
+            if (fn) setSelectedChanges([fn]);
+          } else {
+            const firstFn = data.nodes.find((n: CodeNode) => n.type === 'function');
+            if (firstFn) setSelectedChanges([firstFn]);
+          }
+        });
+    };
+
+    loadState();
+    window.addEventListener('testguard-project-changed', loadState);
+    return () => window.removeEventListener('testguard-project-changed', loadState);
   }, [router]);
 
   const filteredNodes = nodes.filter(n => 

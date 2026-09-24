@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { PlayCircle, AlertTriangle, CheckSquare, Square, Info, CheckCircle2, XCircle } from "lucide-react";
+import { PlayCircle, AlertTriangle, CheckSquare, Square, Info, CheckCircle2, XCircle, History, Activity } from "lucide-react";
+import { clsx } from "clsx";
 import { ReactFlow, Background, Controls, Node, Edge, useNodesState, useEdgesState } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { AnalysisResult, CodeNode } from "@/lib/engine/types";
@@ -71,6 +72,7 @@ export default function Results() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   
+
   const [selectedNodeData, setSelectedNodeData] = useState<any>(null);
   const [selectedTests, setSelectedTests] = useState<Set<string>>(new Set());
   
@@ -78,6 +80,9 @@ export default function Results() {
   const [executionDone, setExecutionDone] = useState(false);
   const [executionResult, setExecutionResult] = useState<any>(null);
   const [executionError, setExecutionError] = useState<string | null>(null);
+  const [executionMode, setExecutionMode] = useState<'selected' | 'full'>('selected');
+  const [executionHistory, setExecutionHistory] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'current' | 'history'>('current');
 
   useEffect(() => {
     const pid = localStorage.getItem('testguard_active_project_id');
@@ -94,6 +99,11 @@ export default function Results() {
       return;
     }
     setProjectId(pid);
+
+    const histStr = localStorage.getItem(`testguard_execution_history_${pid}`);
+    if (histStr) {
+      try { setExecutionHistory(JSON.parse(histStr)); } catch(e) {}
+    }
 
     const modifiedNodeIds = JSON.parse(changesJson);
     const githubState = githubStateStr ? JSON.parse(githubStateStr) : undefined;
@@ -248,6 +258,15 @@ export default function Results() {
     setSelectedTests(newSelected);
   };
 
+  const handleClearHistory = () => {
+    if (window.confirm('Are you sure you want to clear the execution history for this repository?')) {
+      setExecutionHistory([]);
+      if (projectId) {
+        localStorage.removeItem(`testguard_execution_history_${projectId}`);
+      }
+    }
+  };
+
   const handleRunExecution = async () => {
     setExecutionRunning(true);
     setExecutionError(null);
@@ -262,7 +281,8 @@ export default function Results() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           githubState,
-          selectedTests: Array.from(selectedTests) 
+          selectedTests: Array.from(selectedTests),
+          mode: executionMode
         })
       });
       
@@ -271,10 +291,30 @@ export default function Results() {
         throw new Error(data.error || 'Execution failed');
       }
       
+      const newHistoryEntry = {
+        id: Date.now().toString(),
+        commitSha: (projectId && projectId.includes('/')) ? (githubState?.selectedCommit || 'unknown') : 'demo',
+        commitMessage: githubState?.commitData?.message || 'unknown',
+        timestamp: new Date().toISOString(),
+        mode: executionMode,
+        metrics: {
+          totalSelected: executionMode === 'full' ? data.results.length : selectedTests.size,
+          passed: data.results.filter((t: any) => t.outcome === 'passed').length,
+          failed: data.results.filter((t: any) => t.outcome === 'failed').length,
+          error: data.results.filter((t: any) => t.outcome === 'error').length,
+          durationSec: parseFloat(data.duration)
+        },
+        results: data.results.map((t: any) => ({ nodeid: t.nodeid, outcome: t.outcome, duration: t.duration }))
+      };
+      
+      const newHistory = [newHistoryEntry, ...executionHistory].slice(0, 20);
+      setExecutionHistory(newHistory);
+      
       setExecutionResult(data);
       setExecutionDone(true);
+      setActiveTab('current');
       if (projectId) {
-        localStorage.setItem(`testguard_execution_${projectId}`, JSON.stringify(data));
+        localStorage.setItem(`testguard_execution_history_${projectId}`, JSON.stringify(newHistory));
       }
     } catch (err: any) {
       setExecutionError(err.message);
@@ -428,13 +468,13 @@ export default function Results() {
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button className="btn btn-secondary" onClick={() => handleSelectMode('full')}>
-              Full Regression
+              Select All Tests
             </button>
             <button className="btn btn-secondary" onClick={() => handleSelectMode('impacted')}>
-              Impacted Only
+              Select Impacted Only
             </button>
             <button className="btn btn-secondary" onClick={() => handleSelectMode('critical')} disabled title="No criticality data available yet">
-              Impacted + Critical
+              Select Critical
             </button>
           </div>
         </div>
@@ -476,76 +516,198 @@ export default function Results() {
           </table>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', borderTop: '1px solid var(--panel-border)', paddingTop: '1.5rem' }}>
-          {executionDone ? (
-            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ fontSize: '1.25rem' }}>Execution Results</h3>
-                <button className="btn btn-secondary" onClick={() => setExecutionDone(false)}>Close Results</button>
+        <div style={{ borderTop: '1px solid var(--panel-border)', paddingTop: '1.5rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button className={clsx("btn", activeTab === 'current' ? "btn-primary" : "btn-secondary")} onClick={() => setActiveTab('current')}>Current Execution</button>
+              <button className={clsx("btn", activeTab === 'history' ? "btn-primary" : "btn-secondary")} onClick={() => setActiveTab('history')}>History & Comparison</button>
+            </div>
+            
+            {!executionDone && activeTab === 'current' && (
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <select className="btn btn-secondary" value={executionMode} onChange={(e) => setExecutionMode(e.target.value as any)} disabled={executionRunning}>
+                  <option value="selected">Run Impacted Tests</option>
+                  <option value="full">Run Full Regression</option>
+                </select>
+                <button className="btn btn-primary" onClick={handleRunExecution} disabled={executionRunning || (executionMode === 'selected' && selectedTests.size === 0)}>
+                  {executionRunning ? "Preparing Execution..." : <><PlayCircle className="w-5 h-5 mr-2" /> Run</>}
+                </button>
               </div>
-              
-              {executionError ? (
-                <div style={{ padding: '1rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', borderRadius: '0.375rem', color: '#fca5a5' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', fontWeight: 600 }}>
-                    <AlertTriangle className="w-5 h-5" /> Execution Error
-                  </div>
-                  <p>{executionError}</p>
-                </div>
-              ) : executionResult && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <div style={{ display: 'flex', gap: '2rem', padding: '1rem', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '0.5rem' }}>
-                    <div>
-                      <span style={{ color: '#94a3b8', fontSize: '0.875rem' }}>Selected</span>
-                      <div style={{ fontSize: '1.5rem', fontWeight: 600 }}>{selectedTests.size}</div>
-                    </div>
-                    <div>
-                      <span style={{ color: '#94a3b8', fontSize: '0.875rem' }}>Passed</span>
-                      <div style={{ fontSize: '1.5rem', fontWeight: 600, color: '#22c55e' }}>
-                        {executionResult.results.filter((t: any) => t.outcome === 'passed').length}
-                      </div>
-                    </div>
-                    <div>
-                      <span style={{ color: '#94a3b8', fontSize: '0.875rem' }}>Failed</span>
-                      <div style={{ fontSize: '1.5rem', fontWeight: 600, color: '#ef4444' }}>
-                        {executionResult.results.filter((t: any) => t.outcome === 'failed').length}
-                      </div>
-                    </div>
-                    <div>
-                      <span style={{ color: '#94a3b8', fontSize: '0.875rem' }}>Duration</span>
-                      <div style={{ fontSize: '1.5rem', fontWeight: 600 }}>{executionResult.duration}s</div>
-                    </div>
+            )}
+          </div>
+
+          {activeTab === 'current' && (
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {executionDone ? (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ fontSize: '1.25rem' }}>Execution Results</h3>
+                    <button className="btn btn-secondary" onClick={() => setExecutionDone(false)}>Close Results</button>
                   </div>
                   
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {executionResult.results.map((testResult: any, idx: number) => {
-                      const isPassed = testResult.outcome === 'passed';
-                      return (
-                        <div key={idx} style={{ padding: '0.75rem', backgroundColor: 'rgba(255,255,255,0.02)', border: `1px solid ${isPassed ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`, borderRadius: '0.375rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                            {isPassed ? <CheckCircle2 className="w-5 h-5 text-green-500" /> : <XCircle className="w-5 h-5 text-red-500" />}
-                            <span style={{ fontFamily: 'monospace', fontSize: '0.875rem', wordBreak: 'break-all' }}>{testResult.nodeid}</span>
-                            <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: '0.75rem' }}>{testResult.duration.toFixed(2)}s</span>
-                          </div>
-                          {!isPassed && testResult.longrepr && (
-                            <pre style={{ marginTop: '0.75rem', padding: '0.75rem', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '0.25rem', overflowX: 'auto', fontSize: '0.75rem', color: '#fca5a5' }}>
-                              {testResult.longrepr}
-                            </pre>
-                          )}
+                  {executionError ? (
+                    <div style={{ padding: '1rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', borderRadius: '0.375rem', color: '#fca5a5' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', fontWeight: 600 }}>
+                        <AlertTriangle className="w-5 h-5" /> Execution Error
+                      </div>
+                      <p>{executionError}</p>
+                    </div>
+                  ) : executionResult && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      <div style={{ display: 'flex', gap: '2rem', padding: '1rem', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '0.5rem' }}>
+                        <div>
+                          <span style={{ color: '#94a3b8', fontSize: '0.875rem' }}>Selected</span>
+                          <div style={{ fontSize: '1.5rem', fontWeight: 600 }}>{executionMode === 'full' ? executionResult.results.length : selectedTests.size}</div>
                         </div>
-                      );
-                    })}
-                  </div>
+                        <div>
+                          <span style={{ color: '#94a3b8', fontSize: '0.875rem' }}>Passed</span>
+                          <div style={{ fontSize: '1.5rem', fontWeight: 600, color: '#22c55e' }}>
+                            {executionResult.results.filter((t: any) => t.outcome === 'passed').length}
+                          </div>
+                        </div>
+                        <div>
+                          <span style={{ color: '#94a3b8', fontSize: '0.875rem' }}>Failed</span>
+                          <div style={{ fontSize: '1.5rem', fontWeight: 600, color: '#ef4444' }}>
+                            {executionResult.results.filter((t: any) => t.outcome === 'failed').length}
+                          </div>
+                        </div>
+                        <div>
+                          <span style={{ color: '#94a3b8', fontSize: '0.875rem' }}>Duration</span>
+                          <div style={{ fontSize: '1.5rem', fontWeight: 600 }}>{executionResult.duration}s</div>
+                        </div>
+                      </div>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {executionResult.results.map((testResult: any, idx: number) => {
+                          const isPassed = testResult.outcome === 'passed';
+                          return (
+                            <div key={idx} style={{ padding: '0.75rem', backgroundColor: 'rgba(255,255,255,0.02)', border: `1px solid ${isPassed ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`, borderRadius: '0.375rem' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                {isPassed ? <CheckCircle2 className="w-5 h-5 text-green-500" /> : <XCircle className="w-5 h-5 text-red-500" />}
+                                <span style={{ fontFamily: 'monospace', fontSize: '0.875rem', wordBreak: 'break-all' }}>{testResult.nodeid}</span>
+                                <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: '0.75rem' }}>{testResult.duration.toFixed(2)}s</span>
+                              </div>
+                              {!isPassed && testResult.longrepr && (
+                                <pre style={{ marginTop: '0.75rem', padding: '0.75rem', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: '0.25rem', overflowX: 'auto', fontSize: '0.75rem', color: '#fca5a5' }}>
+                                  {testResult.longrepr}
+                                </pre>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{ padding: '3rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: '0.5rem' }}>
+                  <PlayCircle className="w-12 h-12 mb-4 opacity-50" />
+                  <p>Ready to run tests.</p>
+                  <p style={{ fontSize: '0.875rem', marginTop: '0.5rem' }}>Select your execution mode above.</p>
                 </div>
               )}
             </div>
-          ) : (
-            <button className="btn btn-primary" onClick={handleRunExecution} disabled={executionRunning || selectedTests.size === 0}>
-              {executionRunning ? (
-                <>Preparing Execution...</>
-              ) : (
-                <><PlayCircle className="w-5 h-5 mr-2" /> Run Selected Tests</>
-              )}
-            </button>
+          )}
+
+          {activeTab === 'history' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+              {(() => {
+                const currentCommitSha = (projectId && projectId.includes('/')) ? (JSON.parse(localStorage.getItem(`testguard_github_state_${projectId}`) || '{}').selectedCommit || '') : 'demo';
+                const currentCommitHistory = executionHistory.filter(h => h.commitSha === currentCommitSha);
+                const selectedRun = currentCommitHistory.find(h => h.mode === 'selected');
+                const fullRun = currentCommitHistory.find(h => h.mode === 'full');
+                const showComparison = selectedRun && fullRun;
+
+                return (
+                  <>
+                    {showComparison && (
+                      <div style={{ backgroundColor: 'rgba(59, 130, 246, 0.05)', border: '1px solid #3b82f6', borderRadius: '0.5rem', padding: '1.5rem' }}>
+                        <h3 style={{ fontSize: '1.125rem', marginBottom: '1rem', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <Activity className="w-5 h-5" /> Regression Comparison
+                        </h3>
+                        <p style={{ fontSize: '0.875rem', color: '#94a3b8', marginBottom: '1rem' }}>
+                          Comparing executions for commit <strong style={{ fontFamily: 'monospace' }}>{currentCommitSha.substring(0, 7)}</strong>
+                        </p>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1.5rem' }}>
+                          <div>
+                            <div style={{ color: '#94a3b8', fontSize: '0.875rem', marginBottom: '0.5rem' }}>TestGuard Selection</div>
+                            <div style={{ fontSize: '1.25rem', fontWeight: 600 }}>{selectedRun.metrics.totalSelected} tests</div>
+                            <div style={{ fontSize: '1.125rem' }}>{selectedRun.metrics.durationSec.toFixed(2)}s</div>
+                            <div style={{ fontSize: '0.875rem', color: '#22c55e' }}>{selectedRun.metrics.passed} Passed, <span style={{ color: selectedRun.metrics.failed > 0 ? '#ef4444' : 'inherit' }}>{selectedRun.metrics.failed} Failed</span></div>
+                          </div>
+                          <div>
+                            <div style={{ color: '#94a3b8', fontSize: '0.875rem', marginBottom: '0.5rem' }}>Full Regression</div>
+                            <div style={{ fontSize: '1.25rem', fontWeight: 600 }}>{fullRun.metrics.totalSelected} tests</div>
+                            <div style={{ fontSize: '1.125rem' }}>{fullRun.metrics.durationSec.toFixed(2)}s</div>
+                            <div style={{ fontSize: '0.875rem', color: '#22c55e' }}>{fullRun.metrics.passed} Passed, <span style={{ color: fullRun.metrics.failed > 0 ? '#ef4444' : 'inherit' }}>{fullRun.metrics.failed} Failed</span></div>
+                          </div>
+                          <div style={{ borderLeft: '1px solid var(--panel-border)', paddingLeft: '1.5rem' }}>
+                            <div style={{ color: '#94a3b8', fontSize: '0.875rem', marginBottom: '0.5rem' }}>Impact</div>
+                            <div style={{ fontSize: '1.25rem', fontWeight: 600, color: '#f59e0b' }}>
+                              {fullRun.metrics.totalSelected - selectedRun.metrics.totalSelected} tests 
+                              <span style={{ fontSize: '0.75rem', display: 'block', fontWeight: 400 }}>(Deferred based on TestGuard selection)</span>
+                            </div>
+                            <div style={{ fontSize: '1.125rem', color: '#f59e0b' }}>
+                              {(fullRun.metrics.durationSec - selectedRun.metrics.durationSec).toFixed(2)}s 
+                              <span style={{ fontSize: '0.75rem', display: 'block', fontWeight: 400 }}>(Measured Execution Difference)</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                        <h3 style={{ fontSize: '1.125rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <History className="w-5 h-5" /> Execution History
+                        </h3>
+                        {executionHistory.length > 0 && (
+                          <button 
+                            onClick={handleClearHistory}
+                            style={{ fontSize: '0.75rem', padding: '0.25rem 0.75rem', borderRadius: '0.25rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.2)', cursor: 'pointer' }}
+                          >
+                            Clear History
+                          </button>
+                        )}
+                      </div>
+                      {executionHistory.length === 0 ? (
+                        <p style={{ color: '#94a3b8', fontSize: '0.875rem' }}>No execution history found for this repository.</p>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                          {executionHistory.map(run => (
+                            <div key={run.id} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 100px 100px 100px', padding: '1rem', backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: '0.375rem', alignItems: 'center', gap: '1rem', fontSize: '0.875rem' }}>
+                              <div>
+                                <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
+                                  {run.mode === 'full' ? 'Full Regression' : 'Impacted Tests'}
+                                  {run.commitSha !== 'demo' && <span style={{ marginLeft: '0.5rem', fontWeight: 400, color: '#94a3b8', fontFamily: 'monospace' }}>{run.commitSha.substring(0, 7)}</span>}
+                                </div>
+                                <div style={{ color: '#94a3b8', fontSize: '0.75rem' }}>{new Date(run.timestamp).toLocaleString()}</div>
+                              </div>
+                              <div>
+                                <div style={{ color: '#94a3b8', fontSize: '0.75rem' }}>Tests</div>
+                                <div style={{ fontWeight: 600 }}>{run.metrics.totalSelected}</div>
+                              </div>
+                              <div>
+                                <div style={{ color: '#94a3b8', fontSize: '0.75rem' }}>Passed</div>
+                                <div style={{ fontWeight: 600, color: '#22c55e' }}>{run.metrics.passed}</div>
+                              </div>
+                              <div>
+                                <div style={{ color: '#94a3b8', fontSize: '0.75rem' }}>Failed</div>
+                                <div style={{ fontWeight: 600, color: run.metrics.failed > 0 ? '#ef4444' : 'inherit' }}>{run.metrics.failed}</div>
+                              </div>
+                              <div>
+                                <div style={{ color: '#94a3b8', fontSize: '0.75rem' }}>Duration</div>
+                                <div style={{ fontWeight: 600 }}>{run.metrics.durationSec.toFixed(2)}s</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
           )}
         </div>
       </div>

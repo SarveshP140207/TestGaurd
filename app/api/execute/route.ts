@@ -83,13 +83,13 @@ export async function POST(request: Request) {
   let tempDir = '';
   try {
     const body = await request.json();
-    const { githubState, selectedTests } = body;
+    const { githubState, selectedTests, mode } = body;
 
     if (!githubState || !githubState.repo || !githubState.selectedCommit) {
       return NextResponse.json({ error: 'Missing github state information' }, { status: 400 });
     }
 
-    if (!selectedTests || !Array.isArray(selectedTests) || selectedTests.length === 0) {
+    if (mode !== 'full' && (!selectedTests || !Array.isArray(selectedTests) || selectedTests.length === 0)) {
       return NextResponse.json({ error: 'No tests selected for execution' }, { status: 400 });
     }
 
@@ -102,7 +102,7 @@ export async function POST(request: Request) {
     const runnerPath = path.join(extractedPath, 'testguard_runner.py');
     fs.writeFileSync(runnerPath, RUNNER_SCRIPT);
 
-    const pytestArgs = selectedTests.map(mapToPytestNodeId);
+    const pytestArgs = mode === 'full' ? [] : selectedTests.map(mapToPytestNodeId);
 
     let pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
     

@@ -61,11 +61,13 @@ export default function Dashboard() {
     };
     
     window.addEventListener('storage', handleStorage);
+    window.addEventListener('testguard-project-changed', loadActiveProject);
     // lightweight polling
     const interval = setInterval(handleStorage, 500);
     
     return () => {
       window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('testguard-project-changed', loadActiveProject);
       clearInterval(interval);
     };
   }, [activeProject?.id]);
